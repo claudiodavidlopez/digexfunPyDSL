@@ -1,0 +1,10 @@
+LIBRARY digexfun
+
+EXPORTS
+
+    RegisterFunctions @1
+    Init @2
+    LoadPyFun @3
+    SetPyFunArg @4
+    CallPyFun @5
+    GetPyFunRetVal @6
