@@ -8,7 +8,7 @@ From the paper [Enhancing PowerFactory Dynamic Models with Python for Rapid Prot
 
 If you use `digexfunPyDSL` for a publication, you can cite it in IEEE format as
 
-* C. D. López, M. Cvetković and P. Palensky, "Enhancing PowerFactory Dynamic Models with Python for Rapid Prototyping," in *Proceedings of the 28th IEEE International Symposium on Industrial Electronics*, Vancouver, Jun. 2019.
+> C. D. López, M. Cvetković and P. Palensky, "Enhancing PowerFactory Dynamic Models with Python for Rapid Prototyping," in *Proceedings of the 28th IEEE International Symposium on Industrial Electronics*, Vancouver, Jun. 2019.
 
 or in bibtex as
 
