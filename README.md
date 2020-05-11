@@ -2,7 +2,7 @@
 
 A minimal library for enhancing PowerFactory dynamic models with Python.
 
-From the paper [Enhancing PowerFactory Dynamic Models with Python for Rapid Prototyping](../pdf/Lopez2019a.pdf).
+From the paper [Enhancing PowerFactory Dynamic Models with Python for Rapid Prototyping](https://claudiodavidlopez.github.io/pdf/Lopez2019a.pdf).
 
 # How to cite
 
