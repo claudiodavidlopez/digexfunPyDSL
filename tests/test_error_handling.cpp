@@ -2,6 +2,8 @@
 // PowerFactory output window and stop the simulation, never crash
 // PowerFactory or hand garbage values back to DSL.
 
+#include <limits>
+
 #include "dsl_test.hpp"
 
 using ErrorHandling = DslTest;
@@ -29,6 +31,27 @@ TEST_F(ErrorHandling, RejectsNegativeFunctionId)
     pf.write_script(kOneFunction);
     pf.LoadPyFun(1, -1);
     ExpectError("function ID -1");
+}
+
+TEST_F(ErrorHandling, RejectsFractionalFunctionId)
+{
+    pf.write_script(kOneFunction);
+    pf.LoadPyFun(1, 1.5);
+    ExpectError("function ID 1.5");
+}
+
+TEST_F(ErrorHandling, RejectsNaNFunctionId)
+{
+    pf.write_script(kOneFunction);
+    pf.LoadPyFun(1, std::numeric_limits<double>::quiet_NaN());
+    ExpectError("function ID nan");
+}
+
+TEST_F(ErrorHandling, RejectsArgumentCountAboveTheLimit)
+{
+    pf.write_script(kOneFunction);
+    pf.LoadPyFun(5000, 0);
+    ExpectError("argument count 5000 is too large");
 }
 
 TEST_F(ErrorHandling, RejectsFunctionIdBeyondTheRegistry)
@@ -94,6 +117,30 @@ TEST_F(ErrorHandling, ReturnIndexOutOfRangeGivesZeroAndAnError)
 
     EXPECT_EQ(pf.GetPyFunRetVal(3, 0), 0.0);
     ExpectError("return value index 3");
+}
+
+TEST_F(ErrorHandling, FailedCallLeavesNoStaleReturnValues)
+{
+    pf.write_script(R"py(
+def checked(x):
+    if x < 0:
+        raise ValueError("negative input")
+    return (x,)
+
+CALLABLE_REGISTRY = [checked]
+)py");
+    pf.LoadPyFun(1, 0);
+    RunSteps(0, 1, 5.0);
+    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 0), 5.0);
+    ExpectNoErrors();
+
+    RunSteps(0, 1, -1.0);
+    ExpectError("ValueError: negative input");
+
+    // The previous step's 5.0 must not be handed out as if it were current.
+    pf.clear_log();
+    EXPECT_EQ(pf.GetPyFunRetVal(0, 0), 0.0);
+    ExpectError("returned 0 values");
 }
 
 TEST_F(ErrorHandling, RejectsReadingReturnValuesBeforeAnyCall)

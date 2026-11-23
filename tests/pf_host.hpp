@@ -25,8 +25,12 @@ public:
     // The single host instance for this process (the DLL keeps global state).
     static PowerFactoryHost &instance();
 
+    ~PowerFactoryHost();
+
     // Registered DSL functions as (name, argument count), via RegisterFunctions.
     std::vector<std::pair<std::string, int>> registered_functions();
+    // One raw RegisterFunctions call, for testing its edge cases.
+    int register_function(int index, char *name, int *arg_count);
 
     // Call an exported DSL function with its arguments in DSL order,
     // e.g. call("SetPyFunArg", {3.5, 1, 0}).
@@ -46,6 +50,8 @@ public:
     void clear_log();
 
     // Write the Python module that digexfun.dll imports as "script".
+    // Throws if the file cannot be written, rather than letting a test run
+    // the previous test's script.
     void write_script(const std::string &source);
 
     // The folder digexfun.dll was loaded from.

@@ -72,6 +72,22 @@ CALLABLE_REGISTRY = [double, negate]
     ExpectNoErrors();
 }
 
+TEST_F(DslApi, ArgumentsKeepTheirValueBetweenCalls)
+{
+    pf.write_script(R"py(
+CALLABLE_REGISTRY = [lambda gain, x: (gain * x,)]
+)py");
+
+    pf.LoadPyFun(2, 0);
+    pf.SetPyFunArg(10.0, 0, 0); // constant: set once
+    for (int step = 1; step <= 3; ++step) {
+        pf.SetPyFunArg(step, 1, 0);
+        pf.CallPyFun(0);
+        EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 0), 10.0 * step);
+    }
+    ExpectNoErrors();
+}
+
 TEST_F(DslApi, CallsFunctionWithoutArguments)
 {
     pf.write_script(R"py(
