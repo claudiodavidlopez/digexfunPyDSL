@@ -65,22 +65,37 @@ unsigned int CppPy::Load(void)
     // Release the previous run's registry
     Py_CLEAR(this->pCallableReg);
 
-    // Import on first call. Python errors are left set for the caller.
-    if (!this->pModule) {
-        this->pModule = PyImport_ImportModule(MODULE_NAME);
-        if (!this->pModule)
-            return CPPPY_IMPORT_FAILED;
-    }
-    // Reload on later calls. If the reload fails, Python keeps the old module
-    // in sys.modules, so keep ours too and reload it again next time (a fresh
-    // import would just return the stale cached module).
-    else {
-        PyObject *pReloaded = PyImport_ReloadModule(this->pModule);
-        if (!pReloaded)
-            return CPPPY_IMPORT_FAILED;
-        Py_DECREF(this->pModule);
-        this->pModule = pReloaded;
-    }
+    Py_CLEAR(this->pModule);
+
+    // Import a fresh copy of the script for every run. importlib.reload would
+    // re-execute it in the old module's namespace, so names removed from the
+    // script (even CALLABLE_REGISTRY) would survive from the previous run.
+    PyObject *pModules = PyImport_GetModuleDict(); // borrowed
+    if (PyDict_GetItemString(pModules, MODULE_NAME) &&
+        PyDict_DelItemString(pModules, MODULE_NAME) < 0)
+        return CPPPY_IMPORT_FAILED;
+    // The old namespace usually sits in reference cycles (functions refer to
+    // their module globals). Collect it now so whatever the previous run
+    // held (sockets, files, models) is released before the new run starts.
+    PyObject *pGc = PyImport_ImportModule("gc");
+    PyObject *pCollected = pGc ? PyObject_CallMethod(pGc, "collect", NULL) : NULL;
+    Py_XDECREF(pCollected);
+    Py_XDECREF(pGc);
+    PyErr_Clear();
+    // Directory listings are cached by the import system; pick up a script
+    // that was created after the last attempt.
+    PyObject *pImportlib = PyImport_ImportModule("importlib");
+    PyObject *pIgnored = pImportlib
+        ? PyObject_CallMethod(pImportlib, "invalidate_caches", NULL)
+        : NULL;
+    Py_XDECREF(pIgnored);
+    Py_XDECREF(pImportlib);
+    PyErr_Clear();
+
+    // Python errors are left set for the caller.
+    this->pModule = PyImport_ImportModule(MODULE_NAME);
+    if (!this->pModule)
+        return CPPPY_IMPORT_FAILED;
     // Load callable registry
     this->pCallableReg = PyObject_GetAttrString(pModule, CALLABLE_REGISTRY_NAME);
     // Couldn't load registry. Keep the module so a later reload re-reads the
