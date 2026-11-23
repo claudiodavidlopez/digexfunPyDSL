@@ -1,7 +1,17 @@
+"""Co-simulation interface for PowerFactory (paper, Section IV-B).
+
+Every time step, the DSL model sends its outputs (here, the voltage at bus
+B6) to an external simulator over ZeroMQ and receives that simulator's
+outputs (here, the load's P and Q). Start eload.py first; it plays the
+external simulator. Requires pyzmq (pip install pyzmq).
+
+exchange_variables accepts any number of values: declare how many with
+LoadPyFun(argNum, pyFunID).
+"""
+
 import zmq
 
-
-ADDRESS = 'tcp://localhost:7000'
+ADDRESS = "tcp://localhost:7000"
 
 
 class CosimInterface:
@@ -24,12 +34,11 @@ class CosimInterface:
         self.socket.send_json(sim_outs)
         sim_ins = self.socket.recv_json()
         self._close_connection()
-        return tuple(sim_ins)
+        return sim_ins
 
 
 cs_int = CosimInterface(ADDRESS)
 
-
 CALLABLE_REGISTRY = [
-    cs_int.exchange_variables
+    cs_int.exchange_variables,  # pyFunID = 0
 ]
