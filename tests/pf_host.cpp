@@ -117,6 +117,13 @@ void PowerFactoryHost::write_script(const std::string &source)
     std::ofstream(fs::path(script_dir_) / "script.py", std::ios::trunc) << source;
 }
 
+std::string PowerFactoryHost::dll_folder() const
+{
+    char path[MAX_PATH] = {};
+    GetModuleFileNameA(dll_, path, MAX_PATH);
+    return fs::path(path).parent_path().string();
+}
+
 void __stdcall PowerFactoryHost::on_print(const char *msg, unsigned int type)
 {
     instance().messages_.push_back({msg ? msg : "", type});

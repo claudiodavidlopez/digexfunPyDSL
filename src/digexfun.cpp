@@ -67,4 +67,25 @@ void stop_simulation()
         g_stop();
 }
 
+std::wstring dll_folder()
+{
+    HMODULE self = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       reinterpret_cast<LPCWSTR>(&dll_folder), &self);
+
+    std::wstring path(MAX_PATH, L'\0');
+    for (;;) {
+        const DWORD length = GetModuleFileNameW(self, path.data(), static_cast<DWORD>(path.size()));
+        if (length == 0)
+            return L"";
+        if (length < path.size()) {
+            path.resize(length);
+            break;
+        }
+        path.resize(path.size() * 2); // truncated: retry with a larger buffer
+    }
+    return path.substr(0, path.find_last_of(L"\\/"));
+}
+
 } // namespace pf

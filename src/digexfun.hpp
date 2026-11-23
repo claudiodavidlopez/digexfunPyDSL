@@ -24,4 +24,7 @@ void   push(double value);
 void print(const std::string &message, MessageType type);
 void stop_simulation();
 
+// The folder this DLL was loaded from: PowerFactory's installation folder.
+std::wstring dll_folder();
+
 } // namespace pf

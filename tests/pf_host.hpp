@@ -48,6 +48,9 @@ public:
     // Write the Python module that digexfun.dll imports as "script".
     void write_script(const std::string &source);
 
+    // The folder digexfun.dll was loaded from.
+    std::string dll_folder() const;
+
 private:
     PowerFactoryHost();
     FARPROC resolve(const char *name);
