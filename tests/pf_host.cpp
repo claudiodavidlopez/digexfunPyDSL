@@ -74,9 +74,11 @@ double PowerFactoryHost::call(const char *name, std::initializer_list<double> ar
 {
     auto fn = reinterpret_cast<DslFn>(resolve(name));
 
+    // PowerFactory's first pop() returns the first DSL argument, so push
+    // them last to first.
     mock_reset();
-    for (double a : args)
-        push(a);
+    for (auto a = std::rbegin(args); a != std::rend(args); ++a)
+        push(*a);
     fn();
 
     if (mock_underflow_count() != 0)

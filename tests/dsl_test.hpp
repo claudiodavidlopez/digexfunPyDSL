@@ -29,11 +29,12 @@ protected:
             << "expected \"" << needle << "\" in:\n" << pf.all_messages();
     }
 
-    // Run `steps` time steps of a one-argument callable, as a DSL model would.
+    // Run `steps` time steps of the one-argument callable `id`, as a DSL
+    // model would.
     void RunSteps(int id, int steps, double arg = 1.0)
     {
         for (int i = 0; i < steps; ++i) {
-            pf.SetPyFunArg(id, 0, arg);
+            pf.SetPyFunArg(arg, 0, id);
             pf.CallPyFun(id);
         }
     }

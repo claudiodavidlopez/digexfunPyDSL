@@ -25,16 +25,16 @@ def refcount_of_result(x):
 CALLABLE_REGISTRY = [constant, refcount_of_result]
 )py");
 
-    pf.LoadPyFun(0, 1);
+    pf.LoadPyFun(1, 0);
     pf.LoadPyFun(1, 1);
 
     RunSteps(0, 1);
     RunSteps(1, 1);
-    const double before = pf.GetPyFunRetVal(1, 0);
+    const double before = pf.GetPyFunRetVal(0, 1);
 
     RunSteps(0, 500);
     RunSteps(1, 1);
-    const double after = pf.GetPyFunRetVal(1, 0);
+    const double after = pf.GetPyFunRetVal(0, 1);
 
     EXPECT_EQ(after, before) << "returned tuples are leaking";
     ExpectNoErrors();
@@ -69,7 +69,7 @@ CALLABLE_REGISTRY = [builtins.digexfun_probe]
 
     double first_run_count = 0.0;
     for (int run = 0; run < 20; ++run) {
-        pf.LoadPyFun(0, 1);
+        pf.LoadPyFun(1, 0);
         RunSteps(0, 10);
         const double count = pf.GetPyFunRetVal(0, 0);
         if (run == 0)

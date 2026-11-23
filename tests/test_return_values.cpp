@@ -9,7 +9,7 @@ using ReturnValues = DslTest;
 TEST_F(ReturnValues, SingleNumberIsOneReturnValue)
 {
     pf.write_script("CALLABLE_REGISTRY = [lambda x: 2 * x]\n");
-    pf.LoadPyFun(0, 1);
+    pf.LoadPyFun(1, 0);
     RunSteps(0, 1, 21.0);
     EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 0), 42.0);
     ExpectNoErrors();
@@ -21,8 +21,8 @@ TEST_F(ReturnValues, IntegersAndBooleansAreNumbers)
     pf.LoadPyFun(0, 0);
     pf.CallPyFun(0);
     EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 0), 3.0);
-    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 1), 1.0);
-    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 2), -7.0);
+    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(1, 0), 1.0);
+    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(2, 0), -7.0);
     ExpectNoErrors();
 }
 
@@ -42,7 +42,7 @@ CALLABLE_REGISTRY = [lambda: (Scalar(1.5), Scalar(-2))]
     pf.LoadPyFun(0, 0);
     pf.CallPyFun(0);
     EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 0), 1.5);
-    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 1), -2.0);
+    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(1, 0), -2.0);
     ExpectNoErrors();
 }
 
@@ -52,7 +52,7 @@ TEST_F(ReturnValues, ListsWorkLikeTuples)
     pf.LoadPyFun(0, 0);
     pf.CallPyFun(0);
     EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 0), 0.25);
-    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 1), 0.5);
+    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(1, 0), 0.5);
     ExpectNoErrors();
 }
 
@@ -62,7 +62,7 @@ TEST_F(ReturnValues, NoneMeansNoReturnValues)
 log = []
 CALLABLE_REGISTRY = [lambda x: log.append(x)]
 )py");
-    pf.LoadPyFun(0, 1);
+    pf.LoadPyFun(1, 0);
     RunSteps(0, 3);
     ExpectNoErrors();
 

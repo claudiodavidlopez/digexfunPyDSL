@@ -13,13 +13,13 @@ def sum_and_product(a, b):
 CALLABLE_REGISTRY = [sum_and_product]
 )py");
 
-    pf.LoadPyFun(0, 2);
-    pf.SetPyFunArg(0, 0, 2.0);
-    pf.SetPyFunArg(0, 1, 3.5);
+    pf.LoadPyFun(2, 0);
+    pf.SetPyFunArg(2.0, 0, 0);
+    pf.SetPyFunArg(3.5, 1, 0);
     pf.CallPyFun(0);
 
     EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 0), 5.5);
-    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 1), 7.0);
+    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(1, 0), 7.0);
     ExpectNoErrors();
 }
 
@@ -38,9 +38,9 @@ integrator = Integrator()
 CALLABLE_REGISTRY = [integrator.step]
 )py");
 
-    pf.LoadPyFun(0, 1);
+    pf.LoadPyFun(1, 0);
     for (int step = 1; step <= 20; ++step) {
-        pf.SetPyFunArg(0, 0, 0.5);
+        pf.SetPyFunArg(0.5, 0, 0);
         pf.CallPyFun(0);
         EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 0), 0.5 * step);
     }
@@ -59,16 +59,16 @@ def negate(x):
 CALLABLE_REGISTRY = [double, negate]
 )py");
 
-    pf.LoadPyFun(0, 1);
+    pf.LoadPyFun(1, 0);
     pf.LoadPyFun(1, 1);
 
-    pf.SetPyFunArg(0, 0, 4.0);
-    pf.SetPyFunArg(1, 0, 4.0);
+    pf.SetPyFunArg(4.0, 0, 0);
+    pf.SetPyFunArg(4.0, 0, 1);
     pf.CallPyFun(0);
     pf.CallPyFun(1);
 
     EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 0), 8.0);
-    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(1, 0), -4.0);
+    EXPECT_DOUBLE_EQ(pf.GetPyFunRetVal(0, 1), -4.0);
     ExpectNoErrors();
 }
 
@@ -94,8 +94,8 @@ TEST_F(DslApi, EveryCallReturnsZeroToDsl)
 CALLABLE_REGISTRY = [lambda x: (x,)]
 )py");
 
-    EXPECT_EQ(pf.LoadPyFun(0, 1), 0.0);
-    EXPECT_EQ(pf.SetPyFunArg(0, 0, 1.0), 0.0);
+    EXPECT_EQ(pf.LoadPyFun(1, 0), 0.0);
+    EXPECT_EQ(pf.SetPyFunArg(1.0, 0, 0), 0.0);
     EXPECT_EQ(pf.CallPyFun(0), 0.0);
     ExpectNoErrors();
 }

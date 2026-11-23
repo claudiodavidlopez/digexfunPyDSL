@@ -78,7 +78,7 @@ Callable &loaded_function(double id_value)
     const std::size_t id = to_function_id(id_value);
     auto &function = session().functions[id];
     if (!function)
-        throw Error(std::format("function ID {} was not loaded; call LoadPyFun({}, ...) "
+        throw Error(std::format("function ID {} was not loaded; call LoadPyFun(..., {}) "
                                 "in the model's initialisation first",
                                 id, id));
     return *function;
@@ -171,10 +171,10 @@ struct DslFunction {
 };
 
 constexpr DslFunction kDslFunctions[] = {
-    {"LoadPyFun", 2},      // LoadPyFun(function ID, number of arguments)
-    {"SetPyFunArg", 3},    // SetPyFunArg(function ID, argument index, value)
-    {"CallPyFun", 1},      // CallPyFun(function ID)
-    {"GetPyFunRetVal", 2}, // GetPyFunRetVal(function ID, return value index)
+    {"LoadPyFun", 2},      // LoadPyFun(argNum, pyFunID)
+    {"SetPyFunArg", 3},    // SetPyFunArg(argVal, argID, pyFunID)
+    {"CallPyFun", 1},      // CallPyFun(pyFunID)
+    {"GetPyFunRetVal", 2}, // GetPyFunRetVal(retValID, pyFunID)
 };
 
 } // namespace
@@ -190,7 +190,7 @@ extern "C" int __stdcall RegisterFunctions(int index, char *name, int *arg_count
     return 0;
 }
 
-// DSL arguments are popped in reverse order.
+// pf::pop() returns the DSL arguments first to last.
 
 extern "C" void __stdcall LoadPyFun()
 {
