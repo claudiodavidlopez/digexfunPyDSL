@@ -155,6 +155,8 @@ static PyCallable *LoadedCallable(const char *dslFunction, double idVal)
 
 void __stdcall LoadPyFun(void)
 {
+    PythonLock lock;
+
     // Get arguments
     double argNumVal  = pop();
     double pyFunIDVal = pop();
@@ -222,6 +224,8 @@ void __stdcall LoadPyFun(void)
 
 void __stdcall SetPyFunArg(void)
 {
+    PythonLock lock;
+
     // Get arguments
     double argVal     = pop();
     double argIDVal   = pop();
@@ -246,6 +250,8 @@ void __stdcall SetPyFunArg(void)
 
 void __stdcall CallPyFun(void)
 {
+    PythonLock lock;
+
     // Get arguments
     double pyFunIDVal = pop();
     push(0);
@@ -285,6 +291,8 @@ void __stdcall CallPyFun(void)
 
 void __stdcall GetPyFunRetVal(void)
 {
+    PythonLock lock;
+
     // Get arguments
     double retValIDVal = pop();
     double pyFunIDVal  = pop();
