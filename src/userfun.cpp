@@ -78,8 +78,12 @@ int __stdcall RegisterFunctions(int ifun, char *cnam, int *iargc)
 // Error reporting
 //------------------------------------------------------------------------------
 
+// Whether script.py was loaded for the current simulation run.
+static bool gScriptLoaded = false;
+
 // Print an error to the PowerFactory output window, one message per line,
-// and ask PowerFactory to stop the simulation.
+// and ask PowerFactory to stop the simulation. That ends the run, so the
+// next LoadPyFun reloads script.py (which the user has probably fixed).
 static void ReportError(const std::string &text)
 {
     std::istringstream lines(text);
@@ -87,6 +91,7 @@ static void ReportError(const std::string &text)
     while (std::getline(lines, line))
         if (!line.empty())
             print_pf(line.c_str(), MSG_ERR);
+    gScriptLoaded = false;
     stop_simulation();
 }
 
@@ -107,8 +112,6 @@ static void ReportErrorf(const char *fmt, ...)
 
 static CppPy        gCppPy                      = CppPy();
 static PyCallable  *gPyCallable[MAX_CALLABLES]  = {};
-static unsigned int gCallCounter[MAX_CALLABLES] = {0};
-static bool         gInitialized                = false;
 
 
 void FreeCallables(void)
@@ -117,25 +120,6 @@ void FreeCallables(void)
             delete gPyCallable[i];
             gPyCallable[i] = NULL;
     }
-}
-
-
-unsigned int Max(unsigned int *array, unsigned int array_size)
-{
-    unsigned int max = 0;
-
-    for (unsigned int i = 0; i<array_size; i++)
-        if (array[i] > max)
-            max = array[i];
-
-    return max;
-}
-
-
-void ResetCallCounter(void)
-{
-    for (int i = 0; i<MAX_CALLABLES; i++)
-        gCallCounter[i] = 0;
 }
 
 
@@ -189,9 +173,14 @@ void __stdcall LoadPyFun(void)
         return;
     }
 
-    if (!gInitialized) { // Code executed only once per simulation run
+    // A simulation run starts with the LoadPyFun calls in the DSL blocks'
+    // initialisation. PowerFactory gives no other signal, so loading an ID
+    // that is already loaded means a new run (or a repeated initialisation)
+    // has started: forget all callables and reload script.py. The same
+    // happens after a failed load, so a fixed script is picked up.
+    if (!gScriptLoaded || gPyCallable[pyFunID]) {
         FreeCallables();
-        ResetCallCounter();
+        gScriptLoaded = false;
         switch (gCppPy.Load()) {
         case CPPPY_OK:
             break;
@@ -209,12 +198,7 @@ void __stdcall LoadPyFun(void)
                         ".py must be a list of callables");
             return;
         }
-        gInitialized = true;
-    }
-
-    if (gPyCallable[pyFunID]) {
-        ReportErrorf("LoadPyFun: function ID %u was loaded more than once", pyFunID);
-        return;
+        gScriptLoaded = true;
     }
 
     unsigned int registrySize = gCppPy.RegistrySize();
@@ -270,11 +254,6 @@ void __stdcall CallPyFun(void)
     if (!pFun)
         return;
     unsigned int pyFunID = (unsigned int)pyFunIDVal;
-
-    gCallCounter[pyFunID]++;
-
-    if (Max(gCallCounter, MAX_CALLABLES) > 5)
-        gInitialized = false;
 
     unsigned int unsetArg = 0;
     switch (pFun->Call(&unsetArg)) {

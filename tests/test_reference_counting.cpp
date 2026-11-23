@@ -43,18 +43,26 @@ CALLABLE_REGISTRY = [constant, refcount_of_result]
 TEST_F(ReferenceCounting, KeepsRegistryEntriesAliveAcrossRuns)
 {
     // The callable lives in builtins so it survives reloading the script.
-    // Its reference count must be the same after every run; a drift means
-    // the DLL is releasing references it doesn't own, or leaking them.
+    // Its reference count must be the same in every run; a drift means the
+    // DLL is releasing references it doesn't own, or keeping old runs alive.
+    // The probe's class is defined in its own namespace: defined in the
+    // script, it would keep the first run's module (and registry) alive.
     pf.write_script(R"py(
 import builtins
+import sys
+
+PROBE_SOURCE = """
 import sys
 
 class Probe:
     def __call__(self, x):
         return (float(sys.getrefcount(self)),)
+"""
 
 if not hasattr(builtins, "digexfun_probe"):
-    builtins.digexfun_probe = Probe()
+    namespace = {}
+    exec(PROBE_SOURCE, namespace)
+    builtins.digexfun_probe = namespace["Probe"]()
 
 CALLABLE_REGISTRY = [builtins.digexfun_probe]
 )py");

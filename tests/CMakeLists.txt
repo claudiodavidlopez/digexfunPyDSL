@@ -17,13 +17,22 @@ add_executable(digexfun_tests
     test_registration.cpp
     test_dsl_api.cpp
     test_reference_counting.cpp
-    test_error_handling.cpp)
+    test_error_handling.cpp
+    test_simulation_runs.cpp)
 target_link_libraries(digexfun_tests PRIVATE mock_digadm GTest::gtest_main)
 # Loaded at run time like PowerFactory does, so only a build-order dependency.
 add_dependencies(digexfun_tests digexfun)
 
 # The embedded interpreter needs the Python DLLs on PATH.
+set(python_on_path "PATH=path_list_prepend:${Python3_RUNTIME_LIBRARY_DIRS}")
+
+# Each test in its own process: a fresh PowerFactory session.
 gtest_discover_tests(digexfun_tests
     DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT_MODIFICATION
-        "PATH=path_list_prepend:${Python3_RUNTIME_LIBRARY_DIRS}")
+    PROPERTIES ENVIRONMENT_MODIFICATION "${python_on_path}")
+
+# All tests in one process: one long PowerFactory session with many
+# simulation runs and script reloads in a row.
+add_test(NAME AllTestsInOneSession COMMAND digexfun_tests --gtest_brief=1)
+set_tests_properties(AllTestsInOneSession PROPERTIES
+    ENVIRONMENT_MODIFICATION "${python_on_path}")
