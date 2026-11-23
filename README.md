@@ -8,7 +8,7 @@ This is the library from the paper [Enhancing PowerFactory Dynamic Models with P
 
 > [!IMPORTANT]
 > **This repository is kept for historical reasons and is no longer maintained.**
-> It relies on PowerFactory's `digexfun` DLL interface for user-defined DSL functions, which DIgSILENT now considers legacy.
+> It relies on PowerFactory's `digexfun` DLL interface for user-defined DSL functions. The PowerFactory User Manual (2023 edition) calls the `digexdyn` and `digexfun` interfaces legacy and recommends avoiding dynamic models based on them whenever possible.
 > For new work, see [Using Python in PowerFactory today](#using-python-in-powerfactory-today).
 >
 > The code was cleaned up once in 2026 (bug fixes, CMake build, tests). It is provided as is; issues and pull requests won't be answered.
