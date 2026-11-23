@@ -2,6 +2,48 @@
 
 
 //------------------------------------------------------------------------------
+// Python error reporting
+//------------------------------------------------------------------------------
+std::string FetchPythonError(void)
+{
+    if (!PyErr_Occurred())
+        return "";
+
+    PyObject *pType, *pValue, *pTraceback;
+    PyErr_Fetch(&pType, &pValue, &pTraceback);
+    PyErr_NormalizeException(&pType, &pValue, &pTraceback);
+
+    std::string text;
+    PyObject *pTbModule = PyImport_ImportModule("traceback");
+    PyObject *pLines = pTbModule
+        ? PyObject_CallMethod(pTbModule, "format_exception", "OOO",
+                              pType,
+                              pValue ? pValue : Py_None,
+                              pTraceback ? pTraceback : Py_None)
+        : NULL;
+    PyObject *pSep = PyUnicode_FromString("");
+    PyObject *pJoined = (pLines && pSep) ? PyUnicode_Join(pSep, pLines) : NULL;
+    const char *pUtf8 = pJoined ? PyUnicode_AsUTF8AndSize(pJoined, NULL) : NULL;
+
+    if (pUtf8)
+        text = pUtf8;
+    else {
+        PyErr_Clear();
+        text = "(unable to format the Python exception)";
+    }
+
+    Py_XDECREF(pJoined);
+    Py_XDECREF(pSep);
+    Py_XDECREF(pLines);
+    Py_XDECREF(pTbModule);
+    Py_XDECREF(pType);
+    Py_XDECREF(pValue);
+    Py_XDECREF(pTraceback);
+    return text;
+}
+
+
+//------------------------------------------------------------------------------
 // For loading a Python script and accessing its callables
 //------------------------------------------------------------------------------
 CppPy::CppPy(void)
@@ -20,67 +62,73 @@ CppPy::~CppPy(void)
 
 unsigned int CppPy::Load(void)
 {
-    // Load module on first call
+    // Release the previous run's registry
+    Py_CLEAR(this->pCallableReg);
+
+    // Import on first call. Python errors are left set for the caller.
     if (!this->pModule) {
-        PyObject *pModuleName = PyUnicode_DecodeFSDefault(MODULE_NAME);
-        this->pModule = PyImport_Import(pModuleName);
-        Py_DECREF(pModuleName);
+        this->pModule = PyImport_ImportModule(MODULE_NAME);
+        if (!this->pModule)
+            return CPPPY_IMPORT_FAILED;
     }
-    // Reload module on second call and after
+    // Reload on later calls. If the reload fails, Python keeps the old module
+    // in sys.modules, so keep ours too and reload it again next time (a fresh
+    // import would just return the stale cached module).
     else {
         PyObject *pReloaded = PyImport_ReloadModule(this->pModule);
+        if (!pReloaded)
+            return CPPPY_IMPORT_FAILED;
         Py_DECREF(this->pModule);
         this->pModule = pReloaded;
     }
-    // Release the previous run's registry
-    Py_XDECREF(this->pCallableReg);
-    this->pCallableReg = NULL;
-    // Couldn't load module
-    if (!this->pModule)
-        return 1;
     // Load callable registry
     this->pCallableReg = PyObject_GetAttrString(pModule, CALLABLE_REGISTRY_NAME);
-    // Couldn't load registry
-    if (!this->pCallableReg) {
-        Py_DECREF(this->pModule);
-        this->pModule = NULL;
-        return 2;
+    // Couldn't load registry. Keep the module so a later reload re-reads the
+    // same file (reload needs a module object).
+    if (!this->pCallableReg)
+        return CPPPY_NO_REGISTRY;
+    if (!PySequence_Check(this->pCallableReg)) {
+        Py_CLEAR(this->pCallableReg);
+        return CPPPY_REGISTRY_NOT_SEQ;
     }
 
-    return 0;
+    return CPPPY_OK;
+}
+
+unsigned int CppPy::RegistrySize(void)
+{
+    if (!this->pCallableReg)
+        return 0;
+    Py_ssize_t size = PySequence_Size(this->pCallableReg);
+    if (size < 0) {
+        PyErr_Clear();
+        return 0;
+    }
+    return (unsigned int)size;
 }
 
 PyObject *CppPy::GetCallable(unsigned int callableID)
 {
-    if (!this->pCallableReg)
+    if (!this->pCallableReg || callableID >= this->RegistrySize())
         return NULL;
-
-    // PyList_GetItem returns a borrowed reference; the caller owns the result
-    PyObject *pCallable = PyList_GetItem(this->pCallableReg, callableID);
-    if (!pCallable) {
+    // PySequence_GetItem returns a new reference, owned by the caller
+    PyObject *pCallable = PySequence_GetItem(this->pCallableReg, callableID);
+    if (!pCallable)
         PyErr_Clear();
-        return NULL;
-    }
-    Py_INCREF(pCallable);
     return pCallable;
-}
-
-void CppPy::Set_PrintFun(void (*PrintFun)(const char *, unsigned int,  ...))
-{
-    this->Print = PrintFun;
 }
 
 
 //------------------------------------------------------------------------------
 // For interacting with a Python callable (function or method)
 //------------------------------------------------------------------------------
-PyCallable::PyCallable(unsigned int argNum, unsigned int callableID, CppPy *pCppPy)
+PyCallable::PyCallable(unsigned int argNum, PyObject *pCallable)
 {
     this->argNum     = argNum;
-    this->callableID = callableID;
-    this->pArgTuple  = NULL;
+    this->retValNum  = 0;
+    this->pArgTuple  = argNum > 0 ? PyTuple_New(argNum) : NULL;
     this->pRetTuple  = NULL;
-    this->pCallable  = pCppPy->GetCallable(callableID);
+    this->pCallable  = pCallable;
 }
 
 PyCallable::~PyCallable(void)
@@ -94,62 +142,65 @@ unsigned int PyCallable::SetArg(double argVal, unsigned int argID)
 {
     // Boundary check
     if (argID >= this->argNum)
-        return 1;
-    // Create new argument tuple if there isn't one already
+        return CPPPY_INDEX_OUT_OF_RANGE;
     if (!this->pArgTuple)
-        pArgTuple = PyTuple_New(this->argNum);
-    // Now there should be an argument tuple
-    if (!this->pArgTuple)
-        return 2;
+        return CPPPY_NO_MEMORY;
     // Convert to Python float
     PyObject *pArgVal = PyFloat_FromDouble(argVal);
-    // Couln't convert to float
     if (!pArgVal)
-        return 3;
-    // Set argument in tuple
+        return CPPPY_NO_MEMORY;
+    // Set argument in tuple (steals the reference, releases the old value)
     if (PyTuple_SetItem(this->pArgTuple, argID, pArgVal) < 0)
-        return 4; // Couln't set argument
+        return CPPPY_NO_MEMORY;
 
-    return 0;
+    return CPPPY_OK;
 }
 
-unsigned int PyCallable::Call(void)
+unsigned int PyCallable::Call(unsigned int *pUnsetArg)
 {
-    if (!this->pCallable)
-        return 1;
+    // Every argument must have been set at least once; a NULL tuple item
+    // would crash the interpreter.
+    for (unsigned int i = 0; i < this->argNum; i++) {
+        if (!PyTuple_GetItem(this->pArgTuple, i)) {
+            PyErr_Clear();
+            *pUnsetArg = i;
+            return CPPPY_ARG_NOT_SET;
+        }
+    }
     // Release the previous step's return values
-    Py_XDECREF(this->pRetTuple);
+    Py_CLEAR(this->pRetTuple);
+    this->retValNum = 0;
     // Call function or method
-    this->pRetTuple = PyObject_CallObject(this->pCallable, this->pArgTuple);
-    // Call failed
-    if (!pRetTuple)
-        return 2;
-    // Update number of returned values
-    this->retValNum = PyTuple_Size(pRetTuple);
+    PyObject *pResult = PyObject_CallObject(this->pCallable, this->pArgTuple);
+    // Call failed (Python error is left set for the caller)
+    if (!pResult)
+        return CPPPY_CALL_FAILED;
+    if (!PyTuple_Check(pResult)) {
+        Py_DECREF(pResult);
+        return CPPPY_NOT_A_TUPLE;
+    }
+    this->pRetTuple = pResult;
+    this->retValNum = (unsigned int)PyTuple_Size(pResult);
 
-    return 0;
+    return CPPPY_OK;
 }
 
 unsigned int PyCallable::GetRetVal(double *pRetVal, unsigned int retValID)
 {
+    if (!this->pRetTuple)
+        return CPPPY_NOT_CALLED_YET;
     // Boundary check
     if (retValID >= this->retValNum)
-        return 1;
-    // Get item from tuple
+        return CPPPY_INDEX_OUT_OF_RANGE;
+    // Get item from tuple (borrowed reference)
     PyObject *pTupleItem = PyTuple_GetItem(this->pRetTuple, retValID);
-    // Item not found
-    if (!pTupleItem)
-        return 2;
     // Item not a float
-    if (!PyFloat_Check(pTupleItem))
-        return 3;
+    if (!pTupleItem || !PyFloat_Check(pTupleItem)) {
+        PyErr_Clear();
+        return CPPPY_NOT_A_FLOAT;
+    }
     // Put the requested item (returned value) in caller's variable
     *pRetVal = PyFloat_AsDouble(pTupleItem);
 
-    return 0;
-}
-
-void PyCallable::Set_PrintFun(void (*PrintFun)(const char *, unsigned int,  ...))
-{
-    this->Print = PrintFun;
+    return CPPPY_OK;
 }

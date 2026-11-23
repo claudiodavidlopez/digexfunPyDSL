@@ -1,19 +1,20 @@
+#include <cmath>
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
 #include <sstream>
-#include <stdio.h>
-#include <stdarg.h>
+#include <string>
+
 #include "digexfun.hpp"
 #include "cpppy.hpp"
 
 
-using namespace std;
-
-
 //------------------------------------------------------------------------------
-// Standard PowerFactory functions for custom DLL creitoan.
+// Standard PowerFactory functions for custom DLL creation.
 // Only RegisterFunctions needs to be modified.
 //
-// Remember to add new functions to the degexfun.def file to make them available
-// to PowerFactory.
+// Remember to add new functions to the digexfun.def file to make them
+// available to PowerFactory.
 //------------------------------------------------------------------------------
 
 // pointer to print function (set on Init() call when DLL is loaded)
@@ -74,21 +75,36 @@ int __stdcall RegisterFunctions(int ifun, char *cnam, int *iargc)
 }
 
 //------------------------------------------------------------------------------
-// Print formated to PowerFactory terminal
+// Error reporting
 //------------------------------------------------------------------------------
-void printf_pf(const char *msg, unsigned int msgType, ...)
+
+// Print an error to the PowerFactory output window, one message per line,
+// and ask PowerFactory to stop the simulation.
+static void ReportError(const std::string &text)
 {
-    va_list pArg;
-    char fMsg[1024];
-    va_start(pArg, msgType);
-    vsprintf(fMsg, msg, pArg);
-    print_pf(fMsg, msgType);
-    va_end(pArg);
+    std::istringstream lines(text);
+    std::string line;
+    while (std::getline(lines, line))
+        if (!line.empty())
+            print_pf(line.c_str(), MSG_ERR);
+    stop_simulation();
+}
+
+static void ReportErrorf(const char *fmt, ...)
+{
+    char buffer[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+    ReportError(buffer);
 }
 
 //------------------------------------------------------------------------------
 // Interface between DSL and C++
 //------------------------------------------------------------------------------
+#define MAX_ARGUMENTS 1024
+
 static CppPy        gCppPy                      = CppPy();
 static PyCallable  *gPyCallable[MAX_CALLABLES]  = {};
 static unsigned int gCallCounter[MAX_CALLABLES] = {0};
@@ -123,90 +139,199 @@ void ResetCallCounter(void)
 }
 
 
+// DSL passes everything as doubles. Accept only whole numbers in [0, limit).
+static bool ToIndex(double value, unsigned int limit, unsigned int *pIndex)
+{
+    if (!(value >= 0.0) || value >= (double)limit || value != std::floor(value))
+        return false;
+    *pIndex = (unsigned int)value;
+    return true;
+}
+
+
+// Validate a function ID passed from DSL and return its callable, or NULL
+// after reporting the problem.
+static PyCallable *LoadedCallable(const char *dslFunction, double idVal)
+{
+    unsigned int pyFunID;
+    if (!ToIndex(idVal, MAX_CALLABLES, &pyFunID)) {
+        ReportErrorf("%s: function ID %g is not a whole number in [0, %d)",
+                     dslFunction, idVal, MAX_CALLABLES);
+        return NULL;
+    }
+    if (!gPyCallable[pyFunID]) {
+        ReportErrorf("%s: function ID %u was not loaded; call LoadPyFun(%u, ...) "
+                     "in the model's initialisation first",
+                     dslFunction, pyFunID, pyFunID);
+        return NULL;
+    }
+    return gPyCallable[pyFunID];
+}
+
+
 void __stdcall LoadPyFun(void)
 {
     // Get arguments
-    unsigned int argNum  = (unsigned int)pop();
-    unsigned int pyFunID = (unsigned int)pop();
+    double argNumVal  = pop();
+    double pyFunIDVal = pop();
+    // Every DSL function returns a value
+    push(0);
 
-    // Function body
+    unsigned int pyFunID, argNum;
+    if (!ToIndex(pyFunIDVal, MAX_CALLABLES, &pyFunID)) {
+        ReportErrorf("LoadPyFun: function ID %g is not a whole number in [0, %d)",
+                     pyFunIDVal, MAX_CALLABLES);
+        return;
+    }
+    if (!ToIndex(argNumVal, MAX_ARGUMENTS, &argNum)) {
+        ReportErrorf("LoadPyFun: argument count %g is not a whole number in [0, %d)",
+                     argNumVal, MAX_ARGUMENTS);
+        return;
+    }
+
     if (!gInitialized) { // Code executed only once per simulation run
         FreeCallables();
         ResetCallCounter();
-        unsigned int error = gCppPy.Load();
-        if (error) {
-            printf_pf("Failed to load module, raised error %u", MSG_ERR, error);
-            stop_simulation();
+        switch (gCppPy.Load()) {
+        case CPPPY_OK:
+            break;
+        case CPPPY_IMPORT_FAILED:
+            ReportError("LoadPyFun: could not import " MODULE_NAME ".py:\n" +
+                        FetchPythonError());
+            return;
+        case CPPPY_NO_REGISTRY:
+            PyErr_Clear();
+            ReportError("LoadPyFun: " MODULE_NAME ".py does not define "
+                        CALLABLE_REGISTRY_NAME);
+            return;
+        default:
+            ReportError("LoadPyFun: " CALLABLE_REGISTRY_NAME " in " MODULE_NAME
+                        ".py must be a list of callables");
+            return;
         }
         gInitialized = true;
     }
 
     if (gPyCallable[pyFunID]) {
-        printf_pf("Multiple attempts to load function %u", MSG_ERR, pyFunID);
-        stop_simulation();
+        ReportErrorf("LoadPyFun: function ID %u was loaded more than once", pyFunID);
+        return;
     }
 
-    gPyCallable[pyFunID] = new PyCallable(argNum, pyFunID, &gCppPy);
-    gPyCallable[pyFunID]->Set_PrintFun(printf_pf);
+    unsigned int registrySize = gCppPy.RegistrySize();
+    if (pyFunID >= registrySize) {
+        ReportErrorf("LoadPyFun: function ID %u is out of range; "
+                     CALLABLE_REGISTRY_NAME " has %u entries", pyFunID, registrySize);
+        return;
+    }
 
-    // Set return value
-    push(0);
+    PyObject *pCallable = gCppPy.GetCallable(pyFunID);
+    if (!pCallable || !PyCallable_Check(pCallable)) {
+        Py_XDECREF(pCallable);
+        ReportErrorf("LoadPyFun: " CALLABLE_REGISTRY_NAME "[%u] is not callable",
+                     pyFunID);
+        return;
+    }
+
+    gPyCallable[pyFunID] = new PyCallable(argNum, pCallable);
 }
 
 
 void __stdcall SetPyFunArg(void)
 {
     // Get arguments
-    double       argVal  =               pop();
-    unsigned int argID   = (unsigned int)pop();
-    unsigned int pyFunID = (unsigned int)pop();
-
-    // Function body
-    unsigned int error = gPyCallable[pyFunID]->SetArg(argVal, argID);
-    if (error) {
-        printf_pf("SetPyFunArg (ID %u) raised error %u", MSG_ERR, pyFunID, error);
-        stop_simulation();
-    }
-
-    // Set return value
+    double argVal     = pop();
+    double argIDVal   = pop();
+    double pyFunIDVal = pop();
     push(0);
+
+    PyCallable *pFun = LoadedCallable("SetPyFunArg", pyFunIDVal);
+    if (!pFun)
+        return;
+
+    unsigned int argID;
+    if (!ToIndex(argIDVal, pFun->ArgCount(), &argID)) {
+        ReportErrorf("SetPyFunArg: argument index %g is out of range; function ID "
+                     "%g was loaded with %u arguments",
+                     argIDVal, pyFunIDVal, pFun->ArgCount());
+        return;
+    }
+    if (pFun->SetArg(argVal, argID) != CPPPY_OK)
+        ReportError("SetPyFunArg: out of memory:\n" + FetchPythonError());
 }
 
 
 void __stdcall CallPyFun(void)
 {
     // Get arguments
-    unsigned int pyFunID = (unsigned int)pop();
+    double pyFunIDVal = pop();
+    push(0);
 
-    // Function body
+    PyCallable *pFun = LoadedCallable("CallPyFun", pyFunIDVal);
+    if (!pFun)
+        return;
+    unsigned int pyFunID = (unsigned int)pyFunIDVal;
+
     gCallCounter[pyFunID]++;
 
     if (Max(gCallCounter, MAX_CALLABLES) > 5)
         gInitialized = false;
 
-    unsigned int error = gPyCallable[pyFunID]->Call();
-    if (error) {
-        printf_pf("CallPyFun (ID %u) raised error %u", MSG_ERR, pyFunID, error);
-        stop_simulation();
+    unsigned int unsetArg = 0;
+    switch (pFun->Call(&unsetArg)) {
+    case CPPPY_OK:
+        break;
+    case CPPPY_ARG_NOT_SET:
+        ReportErrorf("CallPyFun: function ID %u: argument %u was never set with "
+                     "SetPyFunArg", pyFunID, unsetArg);
+        break;
+    case CPPPY_NOT_A_TUPLE:
+        ReportErrorf("CallPyFun: " CALLABLE_REGISTRY_NAME "[%u] must return a tuple",
+                     pyFunID);
+        break;
+    default: {
+        char header[128];
+        snprintf(header, sizeof(header),
+                 "CallPyFun: " CALLABLE_REGISTRY_NAME "[%u] raised an exception:\n",
+                 pyFunID);
+        ReportError(header + FetchPythonError());
+        break;
     }
-
-    // Set return value
-    push(0);
+    }
 }
 
 
 void __stdcall GetPyFunRetVal(void)
 {
     // Get arguments
-    unsigned int retValID = (unsigned int)pop();
-    unsigned int pyFunID  = (unsigned int)pop();
+    double retValIDVal = pop();
+    double pyFunIDVal  = pop();
 
-    // Function body
-    double retVal;
-    unsigned int error = gPyCallable[pyFunID]->GetRetVal(&retVal, retValID);
-    if (error) {
-        printf_pf("GetPyFunRetVal (ID %u) raised error %u", MSG_ERR, pyFunID, error);
-        stop_simulation();
+    double retVal = 0.0;
+    PyCallable *pFun = LoadedCallable("GetPyFunRetVal", pyFunIDVal);
+    if (pFun) {
+        unsigned int retValID = 0;
+        unsigned int error = ToIndex(retValIDVal, MAX_ARGUMENTS, &retValID)
+                                 ? pFun->GetRetVal(&retVal, retValID)
+                                 : CPPPY_INDEX_OUT_OF_RANGE;
+        switch (error) {
+        case CPPPY_OK:
+            break;
+        case CPPPY_NOT_CALLED_YET:
+            ReportErrorf("GetPyFunRetVal: function ID %g has no return values "
+                         "before CallPyFun is called", pyFunIDVal);
+            break;
+        case CPPPY_INDEX_OUT_OF_RANGE:
+            ReportErrorf("GetPyFunRetVal: return value index %g is out of range; "
+                         "function ID %g returned %u values",
+                         retValIDVal, pyFunIDVal, pFun->RetValCount());
+            break;
+        default:
+            ReportErrorf("GetPyFunRetVal: return value %u of function ID %g is not "
+                         "a float", retValID, pyFunIDVal);
+            break;
+        }
+        if (error != CPPPY_OK)
+            retVal = 0.0;
     }
 
     // Set return value
