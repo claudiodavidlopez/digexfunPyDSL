@@ -2,27 +2,6 @@
 
 
 //------------------------------------------------------------------------------
-// Helper functions
-//------------------------------------------------------------------------------
-const char *PyObject_AsString(PyObject *object)
-{
-    PyObject *repr = PyObject_Repr(object);
-    if (!repr)
-        return NULL;
-
-    PyObject *str = PyUnicode_AsEncodedString(repr, "utf-8", "~E~");
-    if (!str) {
-        Py_XDECREF(repr);
-        return NULL;
-    }
-
-    Py_XDECREF(repr);
-
-    return PyBytes_AS_STRING(str);
-}
-
-
-//------------------------------------------------------------------------------
 // For loading a Python script and accessing its callables
 //------------------------------------------------------------------------------
 CppPy::CppPy(void)
@@ -49,8 +28,13 @@ unsigned int CppPy::Load(void)
     }
     // Reload module on second call and after
     else {
-        this->pModule = PyImport_ReloadModule(this->pModule);
+        PyObject *pReloaded = PyImport_ReloadModule(this->pModule);
+        Py_DECREF(this->pModule);
+        this->pModule = pReloaded;
     }
+    // Release the previous run's registry
+    Py_XDECREF(this->pCallableReg);
+    this->pCallableReg = NULL;
     // Couldn't load module
     if (!this->pModule)
         return 1;
@@ -59,6 +43,7 @@ unsigned int CppPy::Load(void)
     // Couldn't load registry
     if (!this->pCallableReg) {
         Py_DECREF(this->pModule);
+        this->pModule = NULL;
         return 2;
     }
 
@@ -70,7 +55,14 @@ PyObject *CppPy::GetCallable(unsigned int callableID)
     if (!this->pCallableReg)
         return NULL;
 
-    return PyList_GetItem(this->pCallableReg, callableID);
+    // PyList_GetItem returns a borrowed reference; the caller owns the result
+    PyObject *pCallable = PyList_GetItem(this->pCallableReg, callableID);
+    if (!pCallable) {
+        PyErr_Clear();
+        return NULL;
+    }
+    Py_INCREF(pCallable);
+    return pCallable;
 }
 
 void CppPy::Set_PrintFun(void (*PrintFun)(const char *, unsigned int,  ...))
@@ -125,6 +117,8 @@ unsigned int PyCallable::Call(void)
 {
     if (!this->pCallable)
         return 1;
+    // Release the previous step's return values
+    Py_XDECREF(this->pRetTuple);
     // Call function or method
     this->pRetTuple = PyObject_CallObject(this->pCallable, this->pArgTuple);
     // Call failed

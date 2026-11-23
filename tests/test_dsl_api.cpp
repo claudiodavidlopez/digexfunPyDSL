@@ -1,25 +1,8 @@
 // Behaviour of the four DSL functions as seen from a DSL model.
 
-#include <gtest/gtest.h>
+#include "dsl_test.hpp"
 
-#include "pf_host.hpp"
-
-namespace {
-
-class DslApi : public ::testing::Test {
-protected:
-    PowerFactoryHost &pf = PowerFactoryHost::instance();
-
-    void SetUp() override { pf.clear_log(); }
-
-    void ExpectNoErrors()
-    {
-        EXPECT_FALSE(pf.has_error()) << pf.all_messages();
-        EXPECT_EQ(pf.stop_requests(), 0) << pf.all_messages();
-    }
-};
-
-} // namespace
+using DslApi = DslTest;
 
 TEST_F(DslApi, CallsFunctionAndReturnsTupleValues)
 {

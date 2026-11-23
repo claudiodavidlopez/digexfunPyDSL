@@ -15,7 +15,8 @@ set_target_properties(mock_digadm PROPERTIES OUTPUT_NAME digadm)
 add_executable(digexfun_tests
     pf_host.cpp
     test_registration.cpp
-    test_dsl_api.cpp)
+    test_dsl_api.cpp
+    test_reference_counting.cpp)
 target_link_libraries(digexfun_tests PRIVATE mock_digadm GTest::gtest_main)
 # Loaded at run time like PowerFactory does, so only a build-order dependency.
 add_dependencies(digexfun_tests digexfun)
