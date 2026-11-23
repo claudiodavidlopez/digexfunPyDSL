@@ -140,16 +140,14 @@ PyObject *CppPy::GetCallable(unsigned int callableID)
 PyCallable::PyCallable(unsigned int argNum, PyObject *pCallable)
 {
     this->argNum     = argNum;
-    this->retValNum  = 0;
     this->pArgTuple  = argNum > 0 ? PyTuple_New(argNum) : NULL;
-    this->pRetTuple  = NULL;
     this->pCallable  = pCallable;
+    this->called     = false;
 }
 
 PyCallable::~PyCallable(void)
 {
     Py_XDECREF(this->pArgTuple);
-    Py_XDECREF(this->pRetTuple);
     Py_XDECREF(this->pCallable);
 }
 
@@ -171,51 +169,81 @@ unsigned int PyCallable::SetArg(double argVal, unsigned int argID)
     return CPPPY_OK;
 }
 
-unsigned int PyCallable::Call(unsigned int *pUnsetArg)
+unsigned int PyCallable::Call(unsigned int *pIndex)
 {
     // Every argument must have been set at least once; a NULL tuple item
     // would crash the interpreter.
     for (unsigned int i = 0; i < this->argNum; i++) {
         if (!PyTuple_GetItem(this->pArgTuple, i)) {
             PyErr_Clear();
-            *pUnsetArg = i;
+            *pIndex = i;
             return CPPPY_ARG_NOT_SET;
         }
     }
-    // Release the previous step's return values
-    Py_CLEAR(this->pRetTuple);
-    this->retValNum = 0;
+    // Forget the previous step's return values
+    this->called = true;
+    this->retVals.clear();
     // Call function or method
     PyObject *pResult = PyObject_CallObject(this->pCallable, this->pArgTuple);
     // Call failed (Python error is left set for the caller)
     if (!pResult)
         return CPPPY_CALL_FAILED;
-    if (!PyTuple_Check(pResult)) {
-        Py_DECREF(pResult);
-        return CPPPY_NOT_A_TUPLE;
-    }
-    this->pRetTuple = pResult;
-    this->retValNum = (unsigned int)PyTuple_Size(pResult);
+    unsigned int error = this->StoreRetVals(pResult, pIndex);
+    Py_DECREF(pResult);
+    return error;
+}
 
+// float() also parses strings, but a string returned to a simulation model
+// is a bug rather than a number.
+static PyObject *ToPythonFloat(PyObject *pValue)
+{
+    if (PyUnicode_Check(pValue) || PyBytes_Check(pValue)) {
+        PyErr_SetString(PyExc_TypeError, "expected a number, got a string");
+        return NULL;
+    }
+    return PyNumber_Float(pValue);
+}
+
+// Accept a tuple or other sequence of numbers, a single number, or None.
+// A "number" is anything float() accepts except strings. Python errors are
+// left set.
+unsigned int PyCallable::StoreRetVals(PyObject *pResult, unsigned int *pBadIndex)
+{
+    if (pResult == Py_None)
+        return CPPPY_OK;
+
+    bool isSequence = PySequence_Check(pResult) &&
+                      !PyUnicode_Check(pResult) && !PyBytes_Check(pResult);
+    Py_ssize_t count = isSequence ? PySequence_Size(pResult) : 1;
+    if (count < 0) {
+        *pBadIndex = 0;
+        return CPPPY_NOT_A_NUMBER;
+    }
+
+    std::vector<double> values;
+    values.reserve((size_t)count);
+    for (Py_ssize_t i = 0; i < count; i++) {
+        PyObject *pItem = isSequence ? PySequence_GetItem(pResult, i) : pResult;
+        PyObject *pFloat = pItem ? ToPythonFloat(pItem) : NULL;
+        if (isSequence)
+            Py_XDECREF(pItem);
+        if (!pFloat) {
+            *pBadIndex = (unsigned int)i;
+            return CPPPY_NOT_A_NUMBER;
+        }
+        values.push_back(PyFloat_AsDouble(pFloat));
+        Py_DECREF(pFloat);
+    }
+    this->retVals.swap(values);
     return CPPPY_OK;
 }
 
 unsigned int PyCallable::GetRetVal(double *pRetVal, unsigned int retValID)
 {
-    if (!this->pRetTuple)
+    if (!this->called)
         return CPPPY_NOT_CALLED_YET;
-    // Boundary check
-    if (retValID >= this->retValNum)
+    if (retValID >= this->retVals.size())
         return CPPPY_INDEX_OUT_OF_RANGE;
-    // Get item from tuple (borrowed reference)
-    PyObject *pTupleItem = PyTuple_GetItem(this->pRetTuple, retValID);
-    // Item not a float
-    if (!pTupleItem || !PyFloat_Check(pTupleItem)) {
-        PyErr_Clear();
-        return CPPPY_NOT_A_FLOAT;
-    }
-    // Put the requested item (returned value) in caller's variable
-    *pRetVal = PyFloat_AsDouble(pTupleItem);
-
+    *pRetVal = this->retVals[retValID];
     return CPPPY_OK;
 }

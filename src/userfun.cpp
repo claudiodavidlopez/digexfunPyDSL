@@ -255,18 +255,22 @@ void __stdcall CallPyFun(void)
         return;
     unsigned int pyFunID = (unsigned int)pyFunIDVal;
 
-    unsigned int unsetArg = 0;
-    switch (pFun->Call(&unsetArg)) {
+    unsigned int index = 0;
+    switch (pFun->Call(&index)) {
     case CPPPY_OK:
         break;
     case CPPPY_ARG_NOT_SET:
         ReportErrorf("CallPyFun: function ID %u: argument %u was never set with "
-                     "SetPyFunArg", pyFunID, unsetArg);
+                     "SetPyFunArg", pyFunID, index);
         break;
-    case CPPPY_NOT_A_TUPLE:
-        ReportErrorf("CallPyFun: " CALLABLE_REGISTRY_NAME "[%u] must return a tuple",
-                     pyFunID);
+    case CPPPY_NOT_A_NUMBER: {
+        char header[160];
+        snprintf(header, sizeof(header),
+                 "CallPyFun: return value %u of " CALLABLE_REGISTRY_NAME
+                 "[%u] is not a number:\n", index, pyFunID);
+        ReportError(header + FetchPythonError());
         break;
+    }
     default: {
         char header[128];
         snprintf(header, sizeof(header),
@@ -305,8 +309,7 @@ void __stdcall GetPyFunRetVal(void)
                          retValIDVal, pyFunIDVal, pFun->RetValCount());
             break;
         default:
-            ReportErrorf("GetPyFunRetVal: return value %u of function ID %g is not "
-                         "a float", retValID, pyFunIDVal);
+            ReportErrorf("GetPyFunRetVal: unexpected error %u", error);
             break;
         }
         if (error != CPPPY_OK)
