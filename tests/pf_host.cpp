@@ -43,7 +43,9 @@ PowerFactoryHost::PowerFactoryHost()
         throw std::runtime_error("could not load digexfun.dll (error " +
                                  std::to_string(GetLastError()) + ")");
 
+    // Same order as PowerFactory: Init, then enumerate the DSL functions.
     reinterpret_cast<InitFn>(resolve("Init"))(&on_print, &on_stop);
+    registered_functions();
 }
 
 FARPROC PowerFactoryHost::resolve(const char *name)
