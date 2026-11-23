@@ -12,12 +12,16 @@ namespace digexfun {
 namespace {
 
 // Format the pending Python exception like the interpreter would, using
-// traceback.format_exception, and clear it.
+// traceback.format_exception, and clear it. Every step may fail (it runs
+// Python code), in which case a placeholder text is returned instead.
 std::string fetch_python_error()
 {
     if (!PyErr_Occurred())
         return "(no Python exception was set)";
 
+    // PyErr_Fetch is deprecated since Python 3.12 in favour of
+    // PyErr_GetRaisedException, but the latter is not in the 3.10 stable
+    // ABI this DLL targets.
     PyObject *type, *value, *traceback;
     PyErr_Fetch(&type, &value, &traceback);
     PyErr_NormalizeException(&type, &value, &traceback);
@@ -50,6 +54,7 @@ void call_quietly(const char *module, const char *function)
     PyErr_Clear();
 }
 
+// str and bytes are sequences, but never a sequence of numbers here.
 bool is_text(PyObject *object)
 {
     return PyUnicode_Check(object) || PyBytes_Check(object);
@@ -93,6 +98,8 @@ GilLock::GilLock()
         add_dll_folder_to_sys_path();
         PyEval_SaveThread();
     });
+    // Works from any thread, creating a Python thread state if needed, and
+    // nests if this thread already holds the GIL.
     state_ = PyGILState_Ensure();
 }
 
@@ -105,6 +112,8 @@ GilLock::~GilLock()
 
 void Script::load()
 {
+    // Drop our references first, so a failure below leaves the script
+    // unloaded rather than half-loaded.
     registry_.reset();
     module_.reset();
 
@@ -145,7 +154,7 @@ std::size_t Script::size() const
     if (!registry_)
         return 0;
     const Py_ssize_t size = PySequence_Size(registry_.get());
-    if (size < 0) {
+    if (size < 0) { // a custom sequence type whose __len__ raised
         PyErr_Clear();
         return 0;
     }
@@ -185,9 +194,13 @@ void Callable::call()
         if (!arg_set_[i])
             throw Error(std::format("argument {} was never set with SetPyFunArg", i));
 
+    // Clear the previous results up front: if this call fails, DSL must not
+    // read the previous step's values as if they were current.
     called_ = true;
     results_.clear();
 
+    // A new argument tuple for every call, rather than one kept between
+    // calls: the callable may hold on to it, and tuples are immutable.
     PyRef args = PyRef::steal(PyTuple_New(static_cast<Py_ssize_t>(args_.size())));
     if (!args)
         throw_python_error("could not build the argument tuple");
@@ -214,11 +227,15 @@ std::vector<double> Callable::to_numbers(PyObject *result) const
     if (result == Py_None)
         return {};
 
+    // A single number is treated as a sequence of one. count is -1 if the
+    // sequence's length could not be read; that is reported after the loop.
     const bool       is_sequence = PySequence_Check(result) && !is_text(result);
     const Py_ssize_t count       = is_sequence ? PySequence_Size(result) : 1;
 
     std::vector<double> numbers;
     for (Py_ssize_t i = 0; count >= 0 && i < count; ++i) {
+        // `item` may be null if indexing raised; that falls through to the
+        // "not a number" error below, which includes the Python exception.
         PyRef item  = is_sequence ? PyRef::steal(PySequence_GetItem(result, i))
                                   : PyRef::borrow(result);
         PyRef as_float;
