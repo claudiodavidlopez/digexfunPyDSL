@@ -1,7 +1,10 @@
 """External electronic load simulator for the co-simulation example.
 
 Run with `python eload.py` before starting the PowerFactory simulation.
-It answers each request [V] from script.py with [P, Q]. Requires pyzmq.
+It answers each request [V] from script.py with [P, Q], and a
+{"reset": true} request (sent by script.py at the start of every
+simulation run) by starting the load model over, so one run's voltage dip
+does not carry over into the next. Requires pyzmq.
 """
 
 import zmq
@@ -48,8 +51,12 @@ class ElectronicLoadWECC:
         return Fvl * self.Pel0, Fvl * self.Qel0
 
 
+def new_load():
+    return ElectronicLoadWECC(Vd1=0.866, Vd2=0.7, frcel=0.7, Pel0=20, Qel0=10)
+
+
 def main():
-    eload = ElectronicLoadWECC(Vd1=0.866, Vd2=0.7, frcel=0.7, Pel0=20, Qel0=10)
+    eload = new_load()
 
     context = zmq.Context()
     socket = context.socket(zmq.REP)
@@ -57,8 +64,12 @@ def main():
     print("Electronic load listening on port 7000")
 
     while True:
-        sim_ins = socket.recv_json()
-        V = sim_ins[0]
+        request = socket.recv_json()
+        if isinstance(request, dict) and request.get("reset"):
+            eload = new_load()
+            socket.send_json({"reset": True})
+            continue
+        V = request[0]
         P, Q = eload.calc_pq(V)
         socket.send_json([P, Q])
 
