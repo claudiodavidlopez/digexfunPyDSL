@@ -1,0 +1,15 @@
+; Functions exported to PowerFactory. The names are fixed by PowerFactory's
+; digexfun interface (Init, RegisterFunctions) and by the DSL function names
+; registered in dsl_api.cpp, which must match the entries below.
+; The ordinals are those of the original 2019 release.
+
+LIBRARY digexfun
+
+EXPORTS
+
+    RegisterFunctions @1
+    Init @2
+    LoadPyFun @3
+    SetPyFunArg @4
+    CallPyFun @5
+    GetPyFunRetVal @6

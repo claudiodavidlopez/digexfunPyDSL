@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest and newest Python the stable-ABI build is tested with.
+        python: ["3.10", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Configure
+        run: cmake --preset msvc-x64 -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
+
+      - name: Build
+        run: cmake --build --preset release
+
+      - name: Test (mock PowerFactory)
+        run: ctest --preset release
+
+      - name: Check example scripts compile
+        run: python -m py_compile examples/electronic_load/script.py examples/cosimulation/script.py examples/cosimulation/eload.py
