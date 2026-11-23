@@ -4,8 +4,9 @@
 //
 // It loads the DLL at run time (as PowerFactory does), calls Init with
 // print/stop callbacks, and invokes the exported DSL functions using the
-// digadm value-stack convention: arguments are pushed left to right, the
-// function pops them, then pushes exactly one return value.
+// digadm value-stack convention: the arguments are pushed so that the
+// function pops them first to last, then it pushes exactly one return
+// value.
 
 #include <initializer_list>
 #include <string>
@@ -27,14 +28,15 @@ public:
     // Registered DSL functions as (name, argument count), via RegisterFunctions.
     std::vector<std::pair<std::string, int>> registered_functions();
 
-    // Call an exported DSL function, e.g. call("SetPyFunArg", {0, 1, 3.5}).
+    // Call an exported DSL function with its arguments in DSL order,
+    // e.g. call("SetPyFunArg", {3.5, 1, 0}).
     double call(const char *name, std::initializer_list<double> args);
 
-    // Convenience wrappers named after the DSL functions.
-    double LoadPyFun(double id, double arg_count) { return call("LoadPyFun", {id, arg_count}); }
-    double SetPyFunArg(double id, double arg, double value) { return call("SetPyFunArg", {id, arg, value}); }
-    double CallPyFun(double id) { return call("CallPyFun", {id}); }
-    double GetPyFunRetVal(double id, double ret) { return call("GetPyFunRetVal", {id, ret}); }
+    // The DSL functions, with the signatures documented in the paper.
+    double LoadPyFun(double argNum, double pyFunID) { return call("LoadPyFun", {argNum, pyFunID}); }
+    double SetPyFunArg(double argVal, double argID, double pyFunID) { return call("SetPyFunArg", {argVal, argID, pyFunID}); }
+    double CallPyFun(double pyFunID) { return call("CallPyFun", {pyFunID}); }
+    double GetPyFunRetVal(double retValID, double pyFunID) { return call("GetPyFunRetVal", {retValID, pyFunID}); }
 
     // Messages printed to the "output window", and stop requests.
     const std::vector<Message> &messages() const { return messages_; }

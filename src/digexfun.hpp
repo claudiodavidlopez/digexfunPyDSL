@@ -16,8 +16,8 @@ enum class MessageType : unsigned int {
     Pcl     = 0x0010,
 };
 
-// DSL arguments arrive on a stack of doubles: pop them in reverse order,
-// then push exactly one return value.
+// DSL arguments arrive on a stack of doubles: each pop() returns the next
+// argument, first to last. Push exactly one return value afterwards.
 double pop();
 void   push(double value);
 
