@@ -15,6 +15,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Embed)
 
+# Keep all DLLs and executables side by side so the tests' fake digadm.dll
+# is found by digexfun.dll.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 add_library(digexfun SHARED
     src/digexfun.cpp
     src/userfun.cpp
@@ -23,3 +28,9 @@ add_library(digexfun SHARED
 
 target_link_libraries(digexfun PRIVATE Python3::Python)
 target_compile_definitions(digexfun PRIVATE _CRT_SECURE_NO_WARNINGS)
+
+option(DIGEXFUN_BUILD_TESTS "Build the tests (mock PowerFactory host)" ${PROJECT_IS_TOP_LEVEL})
+if(DIGEXFUN_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
