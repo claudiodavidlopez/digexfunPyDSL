@@ -1,5 +1,7 @@
 #include "cpppy.hpp"
 
+#include <mutex>
+
 
 //------------------------------------------------------------------------------
 // Python error reporting
@@ -48,16 +50,36 @@ std::string FetchPythonError(void)
 //------------------------------------------------------------------------------
 CppPy::CppPy(void)
 {
-    Py_Initialize();
     this->pModule = NULL;
     this->pCallableReg = NULL;
 }
 
-CppPy::~CppPy(void)
+
+//------------------------------------------------------------------------------
+// Interpreter lifetime and the GIL
+//------------------------------------------------------------------------------
+static std::once_flag gPythonStarted;
+
+PythonLock::PythonLock(void)
 {
-    Py_XDECREF(this->pModule);
-    Py_XDECREF(this->pCallableReg);
-    Py_Finalize();
+    // Started on first use rather than while the DLL is being loaded:
+    // initialising the interpreter under the Windows loader lock is unsafe.
+    // Py_InitializeEx(0) leaves PowerFactory's signal handlers alone. The
+    // GIL is released right away so any thread can take it below.
+    //
+    // Python is never finalised. PowerFactory unloads the DLL when it
+    // exits, which is too late to finalise safely, and many extension
+    // modules (numpy among them) do not support re-initialisation.
+    std::call_once(gPythonStarted, [] {
+        Py_InitializeEx(0);
+        PyEval_SaveThread();
+    });
+    this->state = PyGILState_Ensure();
+}
+
+PythonLock::~PythonLock(void)
+{
+    PyGILState_Release(this->state);
 }
 
 unsigned int CppPy::Load(void)

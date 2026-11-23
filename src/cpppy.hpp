@@ -28,6 +28,24 @@ std::string FetchPythonError(void);
 
 
 //------------------------------------------------------------------------------
+// Holds the GIL for its lifetime, starting the interpreter on first use.
+// Every entry point that touches Python needs one: PowerFactory may call
+// from any thread.
+//------------------------------------------------------------------------------
+class PythonLock
+{
+private:
+    PyGILState_STATE state;
+
+public:
+    PythonLock(void);
+    ~PythonLock(void);
+    PythonLock(const PythonLock &) = delete;
+    PythonLock &operator=(const PythonLock &) = delete;
+};
+
+
+//------------------------------------------------------------------------------
 // For loading a Python script and accessing its callables
 //------------------------------------------------------------------------------
 class CppPy
@@ -37,8 +55,9 @@ private:
     PyObject *pCallableReg;
 
 public:
+    // Owns references for as long as the process lives: there is no
+    // destructor, because Python is never finalised (see PythonLock).
     CppPy(void);
-    ~CppPy(void);
     unsigned int Load(void);
     unsigned int RegistrySize(void);
     // Returns a new reference, or NULL with no Python error set.
