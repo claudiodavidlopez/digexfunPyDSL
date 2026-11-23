@@ -3,6 +3,7 @@
 #include <Python.h>
 
 #include <string>
+#include <vector>
 
 #define MODULE_NAME            "script"
 #define CALLABLE_REGISTRY_NAME "CALLABLE_REGISTRY"
@@ -18,9 +19,8 @@ enum {
     CPPPY_ARG_NOT_SET         = 5,
     CPPPY_CALL_FAILED         = 6,
     CPPPY_NOT_CALLED_YET      = 7,
-    CPPPY_NOT_A_TUPLE         = 8,
-    CPPPY_NOT_A_FLOAT         = 9,
-    CPPPY_NO_MEMORY           = 10,
+    CPPPY_NOT_A_NUMBER        = 8,
+    CPPPY_NO_MEMORY           = 9,
 };
 
 // Describe and clear the pending Python exception, including its traceback.
@@ -52,19 +52,23 @@ public:
 class PyCallable
 {
 private:
-    unsigned int  argNum;
-    unsigned int  retValNum;
-    PyObject     *pArgTuple;
-    PyObject     *pRetTuple;
-    PyObject     *pCallable;
+    unsigned int        argNum;
+    PyObject           *pArgTuple;
+    PyObject           *pCallable;
+    bool                called;
+    std::vector<double> retVals;
+
+    unsigned int StoreRetVals(PyObject *pResult, unsigned int *pBadIndex);
 
 public:
     // Takes ownership of pCallable (a new reference).
     PyCallable(unsigned int argNum, PyObject *pCallable);
     ~PyCallable(void);
     unsigned int ArgCount(void) const { return argNum; }
-    unsigned int RetValCount(void) const { return retValNum; }
+    unsigned int RetValCount(void) const { return (unsigned int)retVals.size(); }
     unsigned int SetArg(double argVal, unsigned int argID);
-    unsigned int Call(unsigned int *pUnsetArg);
+    // On CPPPY_ARG_NOT_SET or CPPPY_NOT_A_NUMBER, *pIndex is the argument or
+    // return value concerned.
+    unsigned int Call(unsigned int *pIndex);
     unsigned int GetRetVal(double *pRetVal, unsigned int retValID);
 };
