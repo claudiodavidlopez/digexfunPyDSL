@@ -3,6 +3,8 @@
 #include <format>
 #include <mutex>
 
+#include "digexfun.hpp"
+
 namespace digexfun {
 
 // ---- errors ----------------------------------------------------------------
@@ -53,6 +55,19 @@ bool is_text(PyObject *object)
     return PyUnicode_Check(object) || PyBytes_Check(object);
 }
 
+// script.py lives in PowerFactory's installation folder, next to this DLL.
+// Put that folder first on sys.path so it is found whatever PowerFactory's
+// working directory is.
+void add_dll_folder_to_sys_path()
+{
+    const std::wstring folder = pf::dll_folder();
+    PyObject *sys_path = PySys_GetObject("path"); // borrowed
+    PyRef     entry    = PyRef::steal(
+        PyUnicode_FromWideChar(folder.c_str(), static_cast<Py_ssize_t>(folder.size())));
+    if (folder.empty() || !sys_path || !entry || PyList_Insert(sys_path, 0, entry.get()) < 0)
+        PyErr_Clear(); // script.py can still be found through PYTHONPATH
+}
+
 } // namespace
 
 void throw_python_error(const std::string &what)
@@ -75,6 +90,7 @@ GilLock::GilLock()
     static std::once_flag started;
     std::call_once(started, [] {
         Py_InitializeEx(0);
+        add_dll_folder_to_sys_path();
         PyEval_SaveThread();
     });
     state_ = PyGILState_Ensure();
