@@ -19,6 +19,10 @@ class ElectronicLoadWECC:
     Power drops linearly between Vd1 and Vd2. Once the voltage has dipped,
     only a fraction frcel of the lost load recovers. Vmin, the lowest
     voltage seen so far, is remembered between calls.
+
+    PowerFactory may call a model more than once per time step. That is
+    harmless here: calling calc_pq again with the same V returns the same
+    result, because Vmin only ever moves down.
     """
 
     def __init__(self, Vd1, Vd2, frcel, Pel0, Qel0, Vmin0=1.0):
