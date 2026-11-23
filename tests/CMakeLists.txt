@@ -21,8 +21,11 @@ add_executable(digexfun_tests
     test_simulation_runs.cpp
     test_return_values.cpp
     test_threading.cpp
-    test_script_location.cpp)
+    test_script_location.cpp
+    test_examples.cpp)
 target_link_libraries(digexfun_tests PRIVATE mock_digadm GTest::gtest_main)
+target_compile_definitions(digexfun_tests PRIVATE
+    DIGEXFUN_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples")
 # Loaded at run time like PowerFactory does, so only a build-order dependency.
 add_dependencies(digexfun_tests digexfun)
 
