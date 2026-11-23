@@ -25,8 +25,9 @@ target_link_libraries(digexfun_tests PRIVATE mock_digadm GTest::gtest_main)
 # Loaded at run time like PowerFactory does, so only a build-order dependency.
 add_dependencies(digexfun_tests digexfun)
 
-# The embedded interpreter needs the Python DLLs on PATH.
-set(python_on_path "PATH=path_list_prepend:${Python3_RUNTIME_LIBRARY_DIRS}")
+# The embedded interpreter needs python3.dll (next to python.exe) on PATH.
+cmake_path(GET Python3_EXECUTABLE PARENT_PATH python_dir)
+set(python_on_path "PATH=path_list_prepend:${python_dir}")
 
 # Each test in its own process: a fresh PowerFactory session.
 gtest_discover_tests(digexfun_tests
