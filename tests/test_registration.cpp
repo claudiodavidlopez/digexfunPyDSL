@@ -14,3 +14,15 @@ TEST(Registration, ExposesTheFourDslFunctions)
                        {"GetPyFunRetVal", 2},
                    }));
 }
+
+TEST(Registration, RejectsOutOfRangeIndicesAndNullPointers)
+{
+    auto &pf      = PowerFactoryHost::instance();
+    char  name[50] = {};
+    int   argc     = 0;
+
+    EXPECT_NE(pf.register_function(-1, name, &argc), 0);
+    EXPECT_NE(pf.register_function(4, name, &argc), 0);
+    EXPECT_NE(pf.register_function(0, nullptr, &argc), 0);
+    EXPECT_NE(pf.register_function(0, name, nullptr), 0);
+}

@@ -48,6 +48,13 @@ PowerFactoryHost::PowerFactoryHost()
     registered_functions();
 }
 
+PowerFactoryHost::~PowerFactoryHost()
+{
+    // Runs at process exit. Best effort: leave nothing behind in %TEMP%.
+    std::error_code ignored;
+    fs::remove_all(script_dir_, ignored);
+}
+
 FARPROC PowerFactoryHost::resolve(const char *name)
 {
     FARPROC fn = GetProcAddress(dll_, name);
@@ -56,14 +63,18 @@ FARPROC PowerFactoryHost::resolve(const char *name)
     return fn;
 }
 
+int PowerFactoryHost::register_function(int index, char *name, int *arg_count)
+{
+    return reinterpret_cast<RegisterFn>(resolve("RegisterFunctions"))(index, name, arg_count);
+}
+
 std::vector<std::pair<std::string, int>> PowerFactoryHost::registered_functions()
 {
-    auto reg = reinterpret_cast<RegisterFn>(resolve("RegisterFunctions"));
     std::vector<std::pair<std::string, int>> out;
     for (int i = 0;; ++i) {
         char name[50] = {};
         int  argc     = -1;
-        if (reg(i, name, &argc) != 0)
+        if (register_function(i, name, &argc) != 0)
             break;
         out.emplace_back(name, argc);
     }
@@ -114,7 +125,12 @@ void PowerFactoryHost::clear_log()
 
 void PowerFactoryHost::write_script(const std::string &source)
 {
-    std::ofstream(fs::path(script_dir_) / "script.py", std::ios::trunc) << source;
+    const fs::path path = fs::path(script_dir_) / "script.py";
+    std::ofstream file(path, std::ios::trunc);
+    file << source;
+    file.close();
+    if (!file)
+        throw std::runtime_error("could not write " + path.string());
 }
 
 std::string PowerFactoryHost::dll_folder() const
