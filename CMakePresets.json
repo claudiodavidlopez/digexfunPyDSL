@@ -1,0 +1,28 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "msvc-x64",
+      "displayName": "MSVC x64",
+      "description": "Visual Studio generator, 64-bit (PowerFactory is 64-bit)",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release",
+      "configurePreset": "msvc-x64",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "release",
+      "configurePreset": "msvc-x64",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}
